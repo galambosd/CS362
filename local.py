@@ -3,43 +3,18 @@ from Bio.Seq import Seq
 import numpy
 from sys import argv
 
-fasta1_name = argv[1]
-fasta2_name = argv[2]
-scoringFile_name = argv[3]
-
-# put fasta/scoring parsing in another file?
-#parse the fasta files
-with open(fasta1_name, 'rU') as handle1, open(fasta2_name, 'rU') as handle2:
-    for record in SeqIO.parse(handle1, 'fasta'):
-        fasta1_record = record
-    for record in SeqIO.parse(handle2, 'fasta'):
-        fasta2_record = record
-    fasta1Seq = fasta1_record.seq
-    fasta2Seq = fasta2_record.seq
-    fasta1 = str(fasta1Seq.upper())
-    fasta2 = str(fasta2Seq.upper())
-
-# parse the scoring file, ignoring the gap extend penalty 
-    scoringFile=open(scoringFile_name, 'r')
-    lines = scoringFile.readlines()
-    cols = lines[1].split('\t')
-    score_params = []
-    for col in cols:
-        score_params.append(int(col.rstrip('\n')))
-    # return score_params here
-
-# parse the scoring file -- ignore the gap extend
-# pass along an array of scoring parameters
 
 
 # alignment table class
 class LocalAlignmentTable(object):
     """docstring for LocalAlignmentTable."""
-    def __init__(self, size_m, size_n):
+    def __init__(self, fasta1, fasta2):
         super(LocalAlignmentTable, self).__init__()
-        self.size_m = size_m
-        self.size_n = size_n
-        self.array = [[0 for x in range(0,size_m+1)] for y in range(0,size_n+1)]
+        self.size_m = len(fasta2)
+        self.size_n = len(fasta1)
+        self.fasta1=fasta1
+        self.fasta2=fasta2
+        self.array = [[0 for x in range(0,self.size_m+1)] for y in range(0,self.size_n+1)]
         self.max_loc = None
 
     class Cell:
@@ -78,7 +53,7 @@ class LocalAlignmentTable(object):
 
     def fillOutHelper(self, i, j, scoring):
         # a list of possible values to choose from to make indexing possible
-        options = [self.get_val(i-1, j-1) + self.match(fasta1[i-1], fasta2[j-1],scoring),
+        options = [self.get_val(i-1, j-1) + self.match(self.fasta1[i-1], self.fasta2[j-1],scoring),
             self.get_val(i, j-1) + scoring[2], self.get_val(i-1,j)+scoring[2], 0]
         max_index = numpy.argmax(options)
         max_val = options[max_index]
@@ -114,16 +89,12 @@ class LocalAlignmentTable(object):
         align2 = ''
         # identify the max value cell. Don't want the value, but want to access the object in that cell directly
         start_cell = self.array[self.max_loc[0]][self.max_loc[1]]
-        # print self.array
-        #print start_cell
         # add the parts to the alignment strings that aren't part of the
         align1 = align1 + fasta1[start_cell.i:]
         align2 = align2 + fasta2[start_cell.j:]
         prev_cell = (start_cell.prev)[0]
         prev_align = (start_cell.prev)[1]
         while prev_cell.value > 0:
-            print align1
-            print align2
             # use the value of prev_align and various if-tests to determine what to insert
             if prev_align ==  'd':
                 align1 = fasta1[prev_cell.i]+align1
@@ -138,7 +109,6 @@ class LocalAlignmentTable(object):
             prev_align = (prev_cell.prev)[1]
             self.last_i=prev_cell.i
             self.last_j=prev_cell.j
-            print self.last_i, self.last_j
             prev_cell = (prev_cell.prev)[0]
         align1= fasta1[:self.last_i] + align1
         align2= fasta2[:self.last_j] + align2
@@ -150,13 +120,22 @@ class LocalAlignmentTable(object):
     def set_cell(self, value, i, j):
         self.array[i][j] = value
 
-    def format_alignment(self, align1, align2):
+    def format_alignment(self, align1, align2, per_line):
         length_dif = abs(self.last_i-self.last_j)
         if self.last_i>self.last_j:
             align2=' '*length_dif + align2
         else:
             align1=' '*length_dif + align1
-        return '*'*10+'\n'+align1+'\n'+align2+'\n'+'*'*10
+        output_string = ''
+        i=0
+        left = len(align1)
+        while left >=per_line:
+            output_string+=align1[i:i+per_line]+'\n'+align2[i:i+per_line]+'\n'
+            output_string+='\n'
+            i+=per_line
+            left-=per_line
+        output_string+=align1[-left:]+'\n'+align2[-left:]
+        return output_string
 
 
     # local backtrace method (largest --> closest 0)
@@ -173,19 +152,45 @@ class LocalAlignmentTable(object):
 # get the 'hangover' parts of v and w from the beginning and end
 # print the alignment and the max value
 
-if __name__=="__main__":
-    print 'Test:'
-    print fasta1, len(fasta1)
-    print fasta2, len(fasta2)
-    print score_params
-    divider =  '*'*20
-    print divider
-    i = 0
-    j=0
-    table = LocalAlignmentTable(len(fasta2), len(fasta1))
+
+def fileOpen(fasta1_name, fasta2_name, scoringFile_name):
+    with open(fasta1_name, 'rU') as handle1, open(fasta2_name, 'rU') as handle2:
+        for record in SeqIO.parse(handle1, 'fasta'):
+            fasta1_record = record
+        for record in SeqIO.parse(handle2, 'fasta'):
+            fasta2_record = record
+        fasta1Seq = fasta1_record.seq
+        fasta2Seq = fasta2_record.seq
+        fasta1 = str(fasta1Seq.upper())
+        fasta2 = str(fasta2Seq.upper())
+
+    # parse the scoring file, ignoring the gap extend penalty
+        scoringFile=open(scoringFile_name, 'r')
+        lines = scoringFile.readlines()
+        cols = lines[1].split('\t')
+        score_params = []
+        for col in cols:
+            score_params.append(int(col.rstrip('\n')))
+        # return score_params here
+    return fasta1, fasta2, score_params
+    # parse the scoring file -- ignore the gap extend
+    # pass along an array of scoring parameters
+
+
+def main():
+    fasta1_name = argv[1]
+    fasta2_name = argv[2]
+    scoringFile_name = argv[3]
+    fasta1, fasta2, score_params = fileOpen(fasta1_name, fasta2_name, scoringFile_name)
+    print 'Local alignment of \'{0}\' and \'{1}\' with scoring parameters \'{2}\':\n'.format(fasta1_name, fasta2_name, scoringFile_name)
+    table = LocalAlignmentTable(fasta2, fasta1)
     table.localInit()
-    print table.fillOut(score_params)
-    print table.max_loc
-    print divider
+    print 'The max score is {0}.'.format(table.fillOut(score_params))
     printout1, printout2 = table.localBacktrace(fasta1,fasta2)
-    print table.format_alignment(printout1, printout2)
+    print table.format_alignment(printout1, printout2, 150)
+    print 'END ALIGNMENT'
+    # put fasta/scoring parsing in another file?
+    #parse the fasta files
+
+
+main()

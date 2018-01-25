@@ -1,0 +1,3 @@
+seq/TP53-Human.fasta seq/TP53-Cat.fasta
+seq/TP53-Human.fasta seq/TP53-Rat.fasta
+seq/TP53-Cat.fasta seq/TP53-Rat.fasta
